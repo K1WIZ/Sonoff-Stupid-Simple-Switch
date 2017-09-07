@@ -12,8 +12,8 @@ IPAddress subnet(255, 255, 255, 0);
 const int RELAY_PIN = 12; //RELAY
 const int STAT_PIN = 13; // status
  
-const char* ssid = "MIND CONTROL BG";
-const char* password = "N1wilK1wiz";
+const char* ssid = "SSID";
+const char* password = "P@ssw0rd";
 MDNSResponder mdns;
 ESP8266WebServer server(80);
 
