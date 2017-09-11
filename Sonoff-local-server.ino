@@ -11,6 +11,7 @@ IPAddress subnet(255, 255, 255, 0);
 
 const int RELAY_PIN = 12; //RELAY
 const int STAT_PIN = 13; // status
+int state = 0;
  
 const char* ssid = "SSID";
 const char* password = "P@ssw0rd";
@@ -43,6 +44,7 @@ void setup(void){
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(STAT_PIN, OUTPUT);
   Serial.begin(115200);
+  SPIFFS.begin();
   WiFi.config(ip, dns, gateway, subnet);
   WiFi.begin(ssid, password);
   Serial.println("");
@@ -53,20 +55,8 @@ void setup(void){
     //Serial.print(".");
     digitalWrite(STAT_PIN, 1);
   }
-  //Serial.println("");
-  //Serial.print("Connected to ");
-  //Serial.println(ssid);
-  //Serial.print("IP address: ");
-  //Serial.println(WiFi.localIP());
-  digitalWrite(STAT_PIN, 0);
 
-  if (!SPIFFS.begin())
-  {
-    // problem
-    Serial.println("SPIFFS Mount Failed");
-  } else {
-    Serial.println("SPIFFS Mount Success");
-  }
+  digitalWrite(STAT_PIN, 0);
   
   if (mdns.begin("esp8266", WiFi.localIP())) {
     Serial.println("MDNS responder started");
@@ -76,12 +66,30 @@ void setup(void){
   
   server.on("/on", [](){
   server.send(200, "text/plain", "Okay -- Light is ON!");
-  digitalWrite(RELAY_PIN, 1);
+  
+  state = 1;
+  File f = SPIFFS.open("/state.txt", "w"); 
+
+    if (!f) {
+      Serial.println("file open failed on update.");
+    } else {
+      f.println(state); 
+      f.close();
+    }
   });
   
   server.on("/off", [](){
   server.send(200, "text/plain", "Okay -- Light is OFF!");
-  digitalWrite(RELAY_PIN, 0);
+  
+  state = 0;
+  File f = SPIFFS.open("/state.txt", "w"); 
+
+    if (!f) {
+      Serial.println("file open failed on update.");
+    } else {
+      f.println(state); 
+      f.close();
+    }
   });
 
   server.onNotFound(handleNotFound);
@@ -91,5 +99,26 @@ void setup(void){
 }
  
 void loop(void){
+  File f = SPIFFS.open("/state.txt", "r");
+  if (!f) {
+      Serial.println("File open failed on read.");
+    } else {
+      while(f.available()) {
+        //Lets read line by line from the file
+        String line = f.readStringUntil('\n');
+        state = line.toInt();
+        break; //if left in, we'll just read the first line then break out of the while.
+      } 
+      f.close();
+    }
+
+    if (state == 1) {
+  digitalWrite(RELAY_PIN, 1);
+  }
+  else {
+    if (state == 0) {
+    digitalWrite(RELAY_PIN, 0);
+    }
+  }
   server.handleClient();
 }
