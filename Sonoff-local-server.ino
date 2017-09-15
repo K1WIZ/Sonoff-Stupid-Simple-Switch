@@ -1,28 +1,41 @@
+/*
+ * This is a simple no frills switch firmware for the Sonoff basic which will allow you to 
+ * interface with the switch using a simple HTTP interface.  You can then use the Sonoff with your 
+ * own home automation hub by creating a dummy switch that calls either "/on" or "/off".
+ * 
+ * Written By: John Rogers
+ * Date: 9/14/17
+ * 
+ * License: GPLv3
+ */
+
+
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <FS.h>
-
-IPAddress ip(10, 2, 50, 11);
+#include <EEPROM.h>
+/*
+IPAddress ip(10, 2, 50, 11);        // This section if you want hard-coded IP
 IPAddress dns(10, 0, 1, 10);
 IPAddress gateway(10, 2, 50, 1);
 IPAddress subnet(255, 255, 255, 0);
-
-const int RELAY_PIN = 12; //RELAY
-const int STAT_PIN = 13; // status
-int state = 0;
+*/
+const int RELAY_PIN = 12; //RELAY on D6 or GPIO 12
+const int STAT_PIN = 13; // status on D7 or GPIO 13   status indicates whether or not wifi is connected
+int state;
+int lastState;
+String response;  // we build the string that creates the web UI based on selection
  
 const char* ssid = "SSID";
-const char* password = "P@ssw0rd";
+const char* password = "P@ssword";
+
 MDNSResponder mdns;
 ESP8266WebServer server(80);
 
 void handleRoot() {
-  server.send(200, "text/html", "<h1>SONOFF Wireless Switch</h1><p><a href=\"on\"><button>ON</button></a>&nbsp;<a href=\"off\"><button>OFF</button></a></p>");
-  //server.serveStatic("/img", SPIFFS, "/img");
-  //server.serveStatic("/", SPIFFS, "/index.htm");
-  //server.send(200, SPIFFS, "/index.htm");
+  server.send(200, "text/html", response);
+  //server.send(200, "text/plain", response);
 }
 
 void handleNotFound(){
@@ -44,20 +57,26 @@ void setup(void){
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(STAT_PIN, OUTPUT);
   Serial.begin(115200);
-  SPIFFS.begin();
-  WiFi.config(ip, dns, gateway, subnet);
+  WiFi.mode(WIFI_STA);
+  //WiFi.config(ip, dns, gateway, subnet);    // This section if you want hard-coded IP
   WiFi.begin(ssid, password);
   Serial.println("");
+  EEPROM.begin(8);
 
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    //Serial.print(".");
-    digitalWrite(STAT_PIN, 1);
+    Serial.print(".");
   }
 
-  digitalWrite(STAT_PIN, 0);
-  
+  if (WiFi.status() == WL_CONNECTED) {
+    delay(500);
+    digitalWrite(STAT_PIN, LOW);  // reverse the HIGH and LOW on these if using a regular ESP8266 module - GPIO 13 is pulled UP on the SONOFF (the green LED)
+  } else {
+    delay(500);
+    digitalWrite(STAT_PIN, HIGH);
+  }
+
   if (mdns.begin("esp8266", WiFi.localIP())) {
     Serial.println("MDNS responder started");
   }
@@ -65,31 +84,15 @@ void setup(void){
   server.on("/", handleRoot);
   
   server.on("/on", [](){
-  server.send(200, "text/plain", "Okay -- Light is ON!");
-  
+  server.send(200, "text/html", response);
   state = 1;
-  File f = SPIFFS.open("/state.txt", "w"); 
-
-    if (!f) {
-      Serial.println("file open failed on update.");
-    } else {
-      f.println(state); 
-      f.close();
-    }
+  setting();
   });
   
   server.on("/off", [](){
-  server.send(200, "text/plain", "Okay -- Light is OFF!");
-  
+  server.send(200, "text/html", response);
   state = 0;
-  File f = SPIFFS.open("/state.txt", "w"); 
-
-    if (!f) {
-      Serial.println("file open failed on update.");
-    } else {
-      f.println(state); 
-      f.close();
-    }
+  setting();
   });
 
   server.onNotFound(handleNotFound);
@@ -97,28 +100,31 @@ void setup(void){
   server.begin();
   Serial.println("HTTP server started");
 }
+
+void setting(){
+  if( EEPROM.read(0) != state ){
+    EEPROM.write(0, state);
+    EEPROM.commit();
+  }
+}
+
+void showstate(){
+  if( EEPROM.read(0) == 1 ){
+    response = "<h1>SONOFF Wireless Switch</h1><p><a href=\"on\"><button>ON</button></a>&nbsp;<a href=\"off\"><button>OFF</button></a><br><br>SWITCH IS ON</p>";
+  } else if ( EEPROM.read(0) == 0 ){
+    response = "<h1>SONOFF Wireless Switch</h1><p><a href=\"on\"><button>ON</button></a>&nbsp;<a href=\"off\"><button>OFF</button></a><br><br>SWITCH IS OFF</p>";;
+  }
+}
  
 void loop(void){
-  File f = SPIFFS.open("/state.txt", "r");
-  if (!f) {
-      Serial.println("File open failed on read.");
-    } else {
-      while(f.available()) {
-        //Lets read line by line from the file
-        String line = f.readStringUntil('\n');
-        state = line.toInt();
-        break; //if left in, we'll just read the first line then break out of the while.
-      } 
-      f.close();
-    }
 
-    if (state == 1) {
-  digitalWrite(RELAY_PIN, 1);
-  }
-  else {
-    if (state == 0) {
-    digitalWrite(RELAY_PIN, 0);
+  showstate();
+  lastState = EEPROM.read(0);
+
+    if (lastState == 1) {
+      digitalWrite(RELAY_PIN, HIGH);
+    } else if (lastState == 0) {
+      digitalWrite(RELAY_PIN, LOW);
     }
-  }
   server.handleClient();
 }
