@@ -115,6 +115,10 @@ void showstate(){
     response = "<h1>SONOFF Wireless Switch</h1><p><a href=\"on\"><button>ON</button></a>&nbsp;<a href=\"off\"><button>OFF</button></a><br><br>SWITCH IS OFF</p>";;
   }
 }
+
+void startWifi(void) {
+  WiFi.begin(ssid, password);
+}
  
 void loop(void){
 
@@ -126,5 +130,13 @@ void loop(void){
     } else if (lastState == 0) {
       digitalWrite(RELAY_PIN, LOW);
     }
+
+  //connect wifi if not connected
+    if (WiFi.status() != WL_CONNECTED) {
+      delay(1);
+      startWifi();
+    return;
+    }
+    
   server.handleClient();
 }
